@@ -1,3 +1,9 @@
+# ignore media and csv directories
 media/*
 csv/*
+
+# but keep the .gitkeep files
+!.gitkeep
+
+# for macOS: ignore .DS_Store
 .DS_Store
