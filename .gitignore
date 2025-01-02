@@ -4,6 +4,7 @@ csv/*
 
 # but keep the .gitkeep files
 !.gitkeep
+!media/fireworks-kanemori.mp4
 
 # for macOS: ignore .DS_Store
 .DS_Store
