@@ -8,13 +8,33 @@ from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtCore import QUrl, Qt
 
+
 def get_jump_interval():
     try:
         with open("config.toml", "r") as f:
             config = toml.load(f)
-        return config["jump_interval"]["milliseconds"]
+        return config["jump_interval"]
     except FileNotFoundError:
         return 10000
+    
+def get_playback_speeds():
+    try:
+        with open("config.toml", "r") as f:
+            config = toml.load(f)
+        return config["playback_speeds"]
+    except FileNotFoundError:
+        return [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+    
+def get_default_speed_idx():
+    try:
+        with open("config.toml", "r") as f:
+            config = toml.load(f)
+        return config["default_speed_idx"]
+    except FileNotFoundError:
+        return 3
+    
+def to_playback_speed_str(speed_idx):
+    return f"Speed: {get_playback_speeds()[speed_idx]:.2f}x"
     
 def to_timestamp_ms(milliseconds):
     hours = milliseconds // (1000 * 60 * 60)
@@ -60,6 +80,11 @@ class VideoPlayer(QWidget):
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
         
+        self.jump_interval = get_jump_interval()
+        self.playback_speeds = get_playback_speeds()
+        self.default_speed_idx = get_default_speed_idx()
+        self.current_playback_speed_idx = self.default_speed_idx
+        
         # set up basic information for the window
         self.setWindowTitle("Video Tagger")
         self.setGeometry(100, 100, 800, 600)
@@ -69,10 +94,14 @@ class VideoPlayer(QWidget):
         self.video_player.setVideoOutput(self.video_widget)
         self.video_player.setSource(QUrl.fromLocalFile(video_path))
         
+        self.video_player.setPlaybackRate(
+            self.playback_speeds[self.current_playback_speed_idx])
+        
         self.play_button = EmojiButton("▶️", self.toggle_play_pause)
         self.forward_button = EmojiButton("⏩", self.jump_forward)
         self.backward_button = EmojiButton("⏪", self.jump_backward)
         
+        self.speed_label = QLabel(to_playback_speed_str(self.current_playback_speed_idx))
         self.time_label = QLabel("00:00 / 00:00")
         
 
@@ -112,6 +141,16 @@ class VideoPlayer(QWidget):
         if event.key() == Qt.Key.Key_Left:
             self.jump_backward()
             return
+        
+        if event.key() == Qt.Key.Key_Comma or \
+           event.key() == Qt.Key.Key_Less:
+            self.slow_down()
+            return
+        
+        if event.key() == Qt.Key.Key_Period or \
+           event.key() == Qt.Key.Key_Greater:
+            self.speed_up()
+            return
 
         text = event.text()
         # checks if the key pressed is a single alphanumeric character
@@ -123,11 +162,11 @@ class VideoPlayer(QWidget):
             print(f"{event.text()},{timestamp}")
 
     def jump_forward(self):
-        new_position = self.video_player.position() + get_jump_interval()
+        new_position = self.video_player.position() + self.jump_interval
         self.video_player.setPosition(new_position)
 
     def jump_backward(self):
-        new_position = self.video_player.position() - get_jump_interval()
+        new_position = self.video_player.position() - self.jump_interval
         self.video_player.setPosition(max(0, new_position))
 
     def update_position_slider(self, position):
@@ -138,9 +177,15 @@ class VideoPlayer(QWidget):
 
     def set_position(self, position):
         self.video_player.setPosition(position)
-        self.update_time_label()  # Update the time label when the slider is moved
+        self.update_time_label()  # Update the time label when the slider is move
+    
         
     def setup_layout(self):
+        
+        self.speed_label.setFixedSize(125, 25)
+        self.speed_label.setAlignment(Qt.AlignmentFlag.AlignLeft | 
+                                     Qt.AlignmentFlag.AlignVCenter)
+        
         self.time_label.setFixedSize(125, 25)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight | 
                                      Qt.AlignmentFlag.AlignVCenter)
@@ -149,9 +194,7 @@ class VideoPlayer(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
 
-        # this spacer puts the play button in the center
-        button_layout.addSpacerItem(
-            QSpacerItem(125, 25, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+        button_layout.addWidget(self.speed_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         button_layout.addWidget(self.backward_button)
         button_layout.addWidget(self.play_button)
         button_layout.addWidget(self.forward_button)
@@ -168,6 +211,26 @@ class VideoPlayer(QWidget):
         layout.addWidget(self.position_slider)  # Add the slider to the layout
         layout.addWidget(button_container, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.setLayout(layout)
+        
+    def update_playback_speed(self, speed_idx):
+        self.current_playback_speed_idx = speed_idx
+        self.video_player.setPlaybackRate(
+            self.playback_speeds[self.current_playback_speed_idx])
+        
+    def slow_down(self):
+        new_speed_idx = max(0, self.current_playback_speed_idx - 1)
+        self.update_playback_speed(new_speed_idx)
+        self.speed_label.setText(to_playback_speed_str(new_speed_idx))
+        
+    def speed_up(self):
+        new_speed_idx = min(len(self.playback_speeds) - 1, 
+                                      self.current_playback_speed_idx + 1)
+        self.update_playback_speed(new_speed_idx)
+        self.speed_label.setText(to_playback_speed_str(new_speed_idx))
+    
+    def reset_playback_speed(self):
+        self.update_playback_speed(self.default_speed_idx)
+        
         
         
 
