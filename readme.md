@@ -38,10 +38,16 @@ python3 video-tagger/main.py media/fireworks-kanemori.mp4 > tags.csv
 
 Please check [media/media-sources.md](media/media-sources.md) for more details about the media sources.
 
-Controls:
+Playback Controls:
 
 - Play or pause the video with the space bar.
-- Jump forward or backward with the right and left arrow keys.
+- Jump forward or backward by 10 seconds with the right and left arrow keys.
+- Slow down the video with the `,` or `<` key.
+- Speed up the video with the `.` or `>` key.
+- These controls can be customized in the `config.toml` file.
+
+Tagging:
+
 - Add a tag by typing a letter or digit ([A-Za-z0-9]).
   Non-alphanumeric characters will be ignored.
 - The time will be printed to the console in the format `<char>,<HH:MM:SS.MS>`.
