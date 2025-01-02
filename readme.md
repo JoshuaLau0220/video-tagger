@@ -29,16 +29,14 @@ you can run the tool by running the following command:
 python3 video-tagger/main.py <video_path> > <output_path>
 ```
 
-We have provided a test video in the `media` directory.
+We have provided a test video `fireworks-kanemori.mp4` in the `media` directory.
 You can run the tool by running the following command:
 
 ```bash
 python3 video-tagger/main.py media/fireworks-kanemori.mp4 > tags.csv
 ```
 
-This video, shot by Kanemori and obtained from
-[Pixabay](https://pixabay.com/users/kanenori-4749850/?utm_source=link-attribution&utm_medium=referral&utm_campaign=video&utm_content=225661),
-is licensed under the CC0 license.
+Please check [media/media-sources.md](media/media-sources.md) for more details about the media sources.
 
 Controls:
 

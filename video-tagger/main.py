@@ -3,11 +3,11 @@ import os
 import toml
 
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget, \
-    QPushButton, QLabel, QHBoxLayout, QSlider, QSpacerItem, QSizePolicy
+     QPushButton, QLabel, QHBoxLayout, QSlider
+from PyQt6.QtGui import QPixmap, QIcon, QColor
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtCore import QUrl, Qt
-
+from PyQt6.QtCore import QUrl, Qt, QSize
 
 def get_jump_interval():
     try:
@@ -45,6 +45,59 @@ def to_timestamp_ms(milliseconds):
 
 def to_timestamp_s(seconds):
     return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
+
+def is_dark_mode():
+    palette = QApplication.palette()
+    return palette.color(palette.ColorRole.Window).value() < 128
+
+class ImageButton(QPushButton):
+    def __init__(self, icon_path, callback):
+        if not os.path.exists(icon_path):
+            raise FileNotFoundError(f"Icon file not found: {icon_path}")
+        
+        super().__init__()
+        self.setFixedSize(25, 25)
+        self.setIconSize(QSize(25, 25))
+        self.set_icon(icon_path)
+        
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+            }
+        """)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.clicked.connect(callback)
+
+    def invert_icon_brightness(self, icon):
+        # Create a pixmap from the icon
+        pixmap = icon.pixmap(self.iconSize())
+        image = pixmap.toImage()
+        
+        # Invert the brightness of the image
+        for y in range(image.height()):
+            for x in range(image.width()):
+                color = image.pixelColor(x, y)
+                inverted_color = QColor(
+                    255 - color.red(), 
+                    255 - color.green(), 
+                    255 - color.blue(), 
+                    color.alpha())
+                image.setPixelColor(x, y, inverted_color)
+        
+        # Return a new QIcon with the inverted image
+        return QIcon(QPixmap.fromImage(image))
+    
+    def set_icon(self, icon_path):
+        if not os.path.exists(icon_path):
+            raise FileNotFoundError(f"Icon file not found: {icon_path}")
+        if is_dark_mode():
+            self.setIcon(self.invert_icon_brightness(QIcon(icon_path)))
+        else:
+            self.setIcon(QIcon(icon_path))
 
 class EmojiButton(QPushButton):
     def __init__(self, emoji, callback):
@@ -97,12 +150,16 @@ class VideoPlayer(QWidget):
         self.video_player.setPlaybackRate(
             self.playback_speeds[self.current_playback_speed_idx])
         
-        self.play_button = EmojiButton("▶️", self.toggle_play_pause)
-        self.forward_button = EmojiButton("⏩", self.jump_forward)
-        self.backward_button = EmojiButton("⏪", self.jump_backward)
+        self.play_button = ImageButton(
+            "media/icons/play.svg", self.toggle_play_pause)
+        self.forward_button = ImageButton(
+            "media/icons/speed-up.svg", self.speed_up)
+        self.backward_button = ImageButton(
+            "media/icons/slow-down.svg", self.slow_down)
         
-        self.speed_label = QLabel(to_playback_speed_str(self.current_playback_speed_idx))
-        self.time_label = QLabel("00:00 / 00:00")
+        self.speed_label = QLabel(to_playback_speed_str(
+            self.current_playback_speed_idx))
+        self.time_label = QLabel("00:00:00 / 00:00:00")
         
 
         # Create a slider for video position
@@ -118,10 +175,10 @@ class VideoPlayer(QWidget):
     def toggle_play_pause(self):
         if self.video_player.isPlaying():
             self.video_player.pause()
-            self.play_button.setText("▶️")
+            self.play_button.set_icon("media/icons/play.svg")
         else:
             self.video_player.play()
-            self.play_button.setText("⏸️")
+            self.play_button.set_icon("media/icons/pause.svg")
 
     def update_time_label(self):
         current_time = to_timestamp_s(self.video_player.position() // 1000)
@@ -168,49 +225,6 @@ class VideoPlayer(QWidget):
     def jump_backward(self):
         new_position = self.video_player.position() - self.jump_interval
         self.video_player.setPosition(max(0, new_position))
-
-    def update_position_slider(self, position):
-        self.position_slider.setValue(position)
-
-    def update_duration(self, duration):
-        self.position_slider.setRange(0, duration)
-
-    def set_position(self, position):
-        self.video_player.setPosition(position)
-        self.update_time_label()  # Update the time label when the slider is move
-    
-        
-    def setup_layout(self):
-        
-        self.speed_label.setFixedSize(125, 25)
-        self.speed_label.setAlignment(Qt.AlignmentFlag.AlignLeft | 
-                                     Qt.AlignmentFlag.AlignVCenter)
-        
-        self.time_label.setFixedSize(125, 25)
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight | 
-                                     Qt.AlignmentFlag.AlignVCenter)
-        
-        # Create a horizontal layout for the buttons and time label
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-
-        button_layout.addWidget(self.speed_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-        button_layout.addWidget(self.backward_button)
-        button_layout.addWidget(self.play_button)
-        button_layout.addWidget(self.forward_button)
-        button_layout.addWidget(self.time_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-
-        # Create a widget to contain the button layout and set its fixed height
-        button_container = QWidget()
-        button_container.setLayout(button_layout)
-        button_container.setFixedHeight(25)
-        
-        # Main layout
-        layout = QVBoxLayout()
-        layout.addWidget(self.video_widget)
-        layout.addWidget(self.position_slider)  # Add the slider to the layout
-        layout.addWidget(button_container, alignment=Qt.AlignmentFlag.AlignHCenter)
-        self.setLayout(layout)
         
     def update_playback_speed(self, speed_idx):
         self.current_playback_speed_idx = speed_idx
@@ -230,6 +244,56 @@ class VideoPlayer(QWidget):
     
     def reset_playback_speed(self):
         self.update_playback_speed(self.default_speed_idx)
+        
+    def update_position_slider(self, position):
+        self.position_slider.setValue(position)
+
+    def update_duration(self, duration):
+        self.position_slider.setRange(0, duration)
+
+    def set_position(self, position):
+        self.video_player.setPosition(position)
+        self.update_time_label()  # Update the time label when the slider is move
+    
+    def setup_layout(self):
+        self.speed_label.setFixedSize(100, 25)
+        self.speed_label.setAlignment(Qt.AlignmentFlag.AlignLeft | 
+                                     Qt.AlignmentFlag.AlignVCenter)
+        
+        self.time_label.setFixedSize(125, 25)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight | 
+                                     Qt.AlignmentFlag.AlignVCenter)
+        
+        # Create a horizontal layout for the buttons and time label
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
+
+
+        button_layout.addSpacing(25)
+        button_layout.addWidget(
+            self.speed_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        button_layout.addSpacing(25)
+        button_layout.addWidget(self.backward_button)
+        button_layout.addWidget(self.play_button)
+        button_layout.addWidget(self.forward_button)
+        button_layout.addSpacing(25)
+        button_layout.addWidget(
+            self.time_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        # Create a widget to contain the button layout and set its fixed height
+        button_container = QWidget()
+        button_container.setLayout(button_layout)
+        button_container.setFixedHeight(25)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        layout.addWidget(self.video_widget)
+        layout.addWidget(self.position_slider)  # Add the slider to the layout
+        layout.addWidget(
+            button_container, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.setLayout(layout)
+        
+    
         
         
         
