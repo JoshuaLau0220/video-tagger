@@ -1,27 +1,57 @@
 import sys
 import os
-from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget, QPushButton, QLabel, QHBoxLayout, QSlider, QSpacerItem, QSizePolicy
+import toml
+
+from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget, \
+    QPushButton, QLabel, QHBoxLayout, QSlider, QSpacerItem, QSizePolicy
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtCore import QUrl
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QUrl, Qt
+
+def get_jump_interval():
+    try:
+        with open("config.toml", "r") as f:
+            config = toml.load(f)
+        return config["jump_interval"]["milliseconds"]
+    except FileNotFoundError:
+        return 10000
+    
+def to_timestamp_ms(milliseconds):
+    hours = milliseconds // (1000 * 60 * 60)
+    minutes = (milliseconds // (1000 * 60)) % 60
+    seconds = (milliseconds // 1000) % 60
+    milliseconds = milliseconds % 1000
+    return f"{hours:02}:{minutes:02}:{seconds:02}.{milliseconds:03}"
+
+def to_timestamp_s(seconds):
+    return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
 
 class EmojiButton(QPushButton):
-    def __init__(self, emoji):
+    def __init__(self, emoji, callback):
         super().__init__()
         self.setFixedSize(25, 25)
         self.setText(emoji)
-        # Set button style
         self.setStyleSheet("""
+            /* Emojis needs no further styling */
             QPushButton {
                 background-color: transparent;
                 border: none;
             }
+            /* lightly highlight the button when hovered */
             QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.1);  /* Light shading on hover */
+                background-color: rgba(0, 0, 0, 0.1);
             }
         """)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.clicked.connect(callback)
+        
+class HSlider(QSlider):
+    def __init__(self):
+        super().__init__(Qt.Orientation.Horizontal)
+        # Set initial range. This will be updated when video loads
+        self.setRange(0, 0)  
+        # don't steal focus from the video player
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus) 
 
 class VideoPlayer(QWidget):
     def __init__(self, video_path):
@@ -30,62 +60,31 @@ class VideoPlayer(QWidget):
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
         
+        # set up basic information for the window
         self.setWindowTitle("Video Tagger")
         self.setGeometry(100, 100, 800, 600)
         
         self.video_player = QMediaPlayer()
         self.video_widget = QVideoWidget()
         self.video_player.setVideoOutput(self.video_widget)
-        
-        self.play_button = EmojiButton("▶️")
-        self.play_button.clicked.connect(self.toggle_play_pause)
-        
-        self.forward_button = EmojiButton("⏩")
-        self.forward_button.clicked.connect(self.jump_forward)
-
-        self.backward_button = EmojiButton("⏪")
-        self.backward_button.clicked.connect(self.jump_backward)
-        
-        self.time_label = QLabel("00:00 / 00:00")
-        self.time_label.setFixedSize(125, 25)
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        
-        # Create a horizontal layout for the buttons and time label
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-
-        button_layout.addSpacerItem(QSpacerItem(125, 25, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
-        button_layout.addWidget(self.backward_button)
-        button_layout.addWidget(self.play_button)
-        button_layout.addWidget(self.forward_button)
-        button_layout.addWidget(self.time_label, alignment=Qt.AlignmentFlag.AlignVCenter)
-
-        # Create a widget to contain the button layout and set its fixed height
-        button_container = QWidget()
-        button_container.setLayout(button_layout)
-        button_container.setFixedHeight(25)
-
-        # Create a slider for video position
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
-        self.position_slider.setRange(0, 0)  # Initial range, will be updated when video loads
-        self.position_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.position_slider.sliderMoved.connect(self.set_position)
-        # TODO: when clicked, set the position to the slider value
-
-        # Connect slider's value change to update the time label
-        self.position_slider.valueChanged.connect(self.update_time_label)
-
-        # Main layout
-        layout = QVBoxLayout()
-        layout.addWidget(self.video_widget)
-        layout.addWidget(self.position_slider)  # Add the slider to the layout
-        layout.addWidget(button_container, alignment=Qt.AlignmentFlag.AlignHCenter)
-        self.setLayout(layout)
-        
         self.video_player.setSource(QUrl.fromLocalFile(video_path))
         
+        self.play_button = EmojiButton("▶️", self.toggle_play_pause)
+        self.forward_button = EmojiButton("⏩", self.jump_forward)
+        self.backward_button = EmojiButton("⏪", self.jump_backward)
+        
+        self.time_label = QLabel("00:00 / 00:00")
+        
+
+        # Create a slider for video position
+        self.position_slider = HSlider()
+        
+        # Connect slider's value change to update the time label
+        self.position_slider.sliderMoved.connect(self.set_position)
+        self.position_slider.valueChanged.connect(self.update_time_label)
         self.video_player.positionChanged.connect(self.update_position_slider)
         self.video_player.durationChanged.connect(self.update_duration)
+        self.setup_layout()
 
     def toggle_play_pause(self):
         if self.video_player.isPlaying():
@@ -96,16 +95,11 @@ class VideoPlayer(QWidget):
             self.play_button.setText("⏸️")
 
     def update_time_label(self):
-        position = self.video_player.position() // 1000  # Convert milliseconds to seconds
-        duration = self.video_player.duration() // 1000  # Convert milliseconds to seconds
-        
-        current_time = f"{position // 3600:02}:{(position % 3600) // 60:02}:{position % 60:02}"
-        total_time = f"{duration // 3600:02}:{(duration % 3600) // 60:02}:{duration % 60:02}"
-        
+        current_time = to_timestamp_s(self.video_player.position() // 1000)
+        total_time = to_timestamp_s(self.video_player.duration() // 1000)
         self.time_label.setText(f"{current_time} / {total_time}")
 
     def keyPressEvent(self, event):
-        text = event.text()
         
         if event.key() == Qt.Key.Key_Space:
             self.toggle_play_pause()
@@ -119,23 +113,22 @@ class VideoPlayer(QWidget):
             self.jump_backward()
             return
 
+        text = event.text()
+        # checks if the key pressed is a single alphanumeric character
         if len(text) == 1 and text[0].isalnum():
-            # seconds is enough
-            video_position = self.video_player.position()  # Get video position in milliseconds
-            milliseconds = video_position % 1000
-            seconds = (video_position // 1000) % 60
-            minutes = (video_position // (1000 * 60)) % 60
-            hours = (video_position // (1000 * 60 * 60)) % 24
-            timestamp = f"{hours:02}:{minutes:02}:{seconds:02}.{milliseconds:03}"
+            # count to milliseconds. If it's too fine-grained, we can always 
+            # round to the nearest second when processing the output csvs.
+            video_position = self.video_player.position()
+            timestamp = to_timestamp_ms(video_position)
             print(f"{event.text()},{timestamp}")
 
     def jump_forward(self):
-        new_position = self.video_player.position() + 10000  # 10 seconds forward
+        new_position = self.video_player.position() + get_jump_interval()
         self.video_player.setPosition(new_position)
 
     def jump_backward(self):
-        new_position = self.video_player.position() - 10000  # 10 seconds backward
-        self.video_player.setPosition(max(0, new_position))  # Ensure position is not negative
+        new_position = self.video_player.position() - get_jump_interval()
+        self.video_player.setPosition(max(0, new_position))
 
     def update_position_slider(self, position):
         self.position_slider.setValue(position)
@@ -146,6 +139,37 @@ class VideoPlayer(QWidget):
     def set_position(self, position):
         self.video_player.setPosition(position)
         self.update_time_label()  # Update the time label when the slider is moved
+        
+    def setup_layout(self):
+        self.time_label.setFixedSize(125, 25)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignRight | 
+                                     Qt.AlignmentFlag.AlignVCenter)
+        
+        # Create a horizontal layout for the buttons and time label
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
+
+        # this spacer puts the play button in the center
+        button_layout.addSpacerItem(
+            QSpacerItem(125, 25, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+        button_layout.addWidget(self.backward_button)
+        button_layout.addWidget(self.play_button)
+        button_layout.addWidget(self.forward_button)
+        button_layout.addWidget(self.time_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        # Create a widget to contain the button layout and set its fixed height
+        button_container = QWidget()
+        button_container.setLayout(button_layout)
+        button_container.setFixedHeight(25)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        layout.addWidget(self.video_widget)
+        layout.addWidget(self.position_slider)  # Add the slider to the layout
+        layout.addWidget(button_container, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.setLayout(layout)
+        
+        
 
 def main(): 
     # read video from sys.argv

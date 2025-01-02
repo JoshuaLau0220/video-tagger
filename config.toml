@@ -1,0 +1,3 @@
+# specify the jump interval in milliseconds
+[jump_interval]
+milliseconds = 10000
