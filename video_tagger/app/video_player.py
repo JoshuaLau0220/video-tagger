@@ -1,41 +1,16 @@
-import sys
 import os
-import toml
+from importlib.resources import files
+from collections import deque
 
-from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget, \
-     QPushButton, QLabel, QHBoxLayout, QSlider
-from PyQt6.QtGui import QPixmap, QIcon, QColor
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, \
+     QLabel, QHBoxLayout, QSlider
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtCore import QUrl, Qt, QSize
+from PyQt6.QtCore import QUrl, Qt
 
-def get_jump_interval():
-    try:
-        with open("config.toml", "r") as f:
-            config = toml.load(f)
-        return config["jump_interval"]
-    except FileNotFoundError:
-        return 10000
-    
-def get_playback_speeds():
-    try:
-        with open("config.toml", "r") as f:
-            config = toml.load(f)
-        return config["playback_speeds"]
-    except FileNotFoundError:
-        return [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-    
-def get_default_speed_idx():
-    try:
-        with open("config.toml", "r") as f:
-            config = toml.load(f)
-        return config["default_speed_idx"]
-    except FileNotFoundError:
-        return 3
-    
-def to_playback_speed_str(speed_idx):
-    return f"Speed: {get_playback_speeds()[speed_idx]:.2f}x"
-    
+from video_tagger.util import CSVLine
+from video_tagger.app.ui import ImageButton
+
 def to_timestamp_ms(milliseconds):
     hours = milliseconds // (1000 * 60 * 60)
     minutes = (milliseconds // (1000 * 60)) % 60
@@ -45,78 +20,6 @@ def to_timestamp_ms(milliseconds):
 
 def to_timestamp_s(seconds):
     return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
-
-def is_dark_mode():
-    palette = QApplication.palette()
-    return palette.color(palette.ColorRole.Window).value() < 128
-
-class ImageButton(QPushButton):
-    def __init__(self, icon_path, callback):
-        if not os.path.exists(icon_path):
-            raise FileNotFoundError(f"Icon file not found: {icon_path}")
-        
-        super().__init__()
-        self.setFixedSize(25, 25)
-        self.setIconSize(QSize(25, 25))
-        self.set_icon(icon_path)
-        
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.1);
-            }
-        """)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.clicked.connect(callback)
-
-    def invert_icon_brightness(self, icon):
-        # Create a pixmap from the icon
-        pixmap = icon.pixmap(self.iconSize())
-        image = pixmap.toImage()
-        
-        # Invert the brightness of the image
-        for y in range(image.height()):
-            for x in range(image.width()):
-                color = image.pixelColor(x, y)
-                inverted_color = QColor(
-                    255 - color.red(), 
-                    255 - color.green(), 
-                    255 - color.blue(), 
-                    color.alpha())
-                image.setPixelColor(x, y, inverted_color)
-        
-        # Return a new QIcon with the inverted image
-        return QIcon(QPixmap.fromImage(image))
-    
-    def set_icon(self, icon_path):
-        if not os.path.exists(icon_path):
-            raise FileNotFoundError(f"Icon file not found: {icon_path}")
-        if is_dark_mode():
-            self.setIcon(self.invert_icon_brightness(QIcon(icon_path)))
-        else:
-            self.setIcon(QIcon(icon_path))
-
-class EmojiButton(QPushButton):
-    def __init__(self, emoji, callback):
-        super().__init__()
-        self.setFixedSize(25, 25)
-        self.setText(emoji)
-        self.setStyleSheet("""
-            /* Emojis needs no further styling */
-            QPushButton {
-                background-color: transparent;
-                border: none;
-            }
-            /* lightly highlight the button when hovered */
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.1);
-            }
-        """)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.clicked.connect(callback)
         
 class HSlider(QSlider):
     def __init__(self):
@@ -127,16 +30,18 @@ class HSlider(QSlider):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus) 
 
 class VideoPlayer(QWidget):
-    def __init__(self, video_path):
+    def __init__(self, video_path, file_stream, config):
         super().__init__()
         
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
         
-        self.jump_interval = get_jump_interval()
-        self.playback_speeds = get_playback_speeds()
-        self.default_speed_idx = get_default_speed_idx()
-        self.current_playback_speed_idx = self.default_speed_idx
+        self.file_stream = file_stream
+        self.config = config
+        
+        self.buffer = deque(maxlen=self.config.buffer_size)
+        self.current_playback_speed_idx = self.config.default_speed_idx
+        
         
         # set up basic information for the window
         self.setWindowTitle("Video Tagger")
@@ -148,16 +53,19 @@ class VideoPlayer(QWidget):
         self.video_player.setSource(QUrl.fromLocalFile(video_path))
         
         self.video_player.setPlaybackRate(
-            self.playback_speeds[self.current_playback_speed_idx])
+            self.config.playback_speeds[self.current_playback_speed_idx])
         
         self.play_button = ImageButton(
-            "media/icons/play.svg", self.toggle_play_pause)
+            str(files("video_tagger.media.icons") / "play.svg"), 
+            self.toggle_play_pause)
         self.forward_button = ImageButton(
-            "media/icons/speed-up.svg", self.speed_up)
+            str(files("video_tagger.media.icons") / "speed-up.svg"), 
+            self.speed_up)
         self.backward_button = ImageButton(
-            "media/icons/slow-down.svg", self.slow_down)
+            str(files("video_tagger.media.icons") / "slow-down.svg"), 
+            self.slow_down)
         
-        self.speed_label = QLabel(to_playback_speed_str(
+        self.speed_label = QLabel(self.to_playback_speed_str(
             self.current_playback_speed_idx))
         self.time_label = QLabel("00:00:00 / 00:00:00")
         
@@ -171,15 +79,26 @@ class VideoPlayer(QWidget):
         self.video_player.positionChanged.connect(self.update_position_slider)
         self.video_player.durationChanged.connect(self.update_duration)
         self.setup_layout()
+        
+    def closeEvent(self, event):
+        if self.buffer and self.file_stream is not None:
+            for csv_line in self.buffer:
+                self.file_stream.write(f"{csv_line}\n")
+        event.accept()
+        
+    def to_playback_speed_str(self, speed_idx):
+        return f"Speed: {self.config.playback_speeds[speed_idx]:.2f}x"
 
     def toggle_play_pause(self):
         if self.video_player.isPlaying():
             self.video_player.pause()
-            self.play_button.set_icon("media/icons/play.svg")
+            self.play_button.set_icon(
+                    str(files("video_tagger.media.icons") / "play.svg"))
         else:
             self.video_player.play()
-            self.play_button.set_icon("media/icons/pause.svg")
-
+            self.play_button.set_icon(
+                str(files("video_tagger.media.icons") / "pause.svg"))
+            
     def update_time_label(self):
         current_time = to_timestamp_s(self.video_player.position() // 1000)
         total_time = to_timestamp_s(self.video_player.duration() // 1000)
@@ -208,42 +127,64 @@ class VideoPlayer(QWidget):
            event.key() == Qt.Key.Key_Greater:
             self.speed_up()
             return
+    
+        if event.key() == Qt.Key.Key_Backspace:
+            self.pop_csv_line()
+            return
 
         text = event.text()
         # checks if the key pressed is a single alphanumeric character
         if len(text) == 1 and text[0].isalnum():
-            # count to milliseconds. If it's too fine-grained, we can always 
-            # round to the nearest second when processing the output csvs.
-            video_position = self.video_player.position()
-            timestamp = to_timestamp_ms(video_position)
-            print(f"{event.text()},{timestamp}", flush=True)
+            self.add_csv_line(text)
+            
+    
+    
+    def add_csv_line(self, text):
+        video_position = self.video_player.position()
+        timestamp = to_timestamp_ms(video_position)
+        csv_line = CSVLine(text, timestamp)
+        print(csv_line, flush=True)                
+        # if full, pop the oldest line and write to file
+        if len(self.buffer) == self.config.buffer_size:
+            popped_csv_line = self.buffer.popleft()
+            if self.file_stream is not None:
+                self.file_stream.write(f"{popped_csv_line}\n")
+        # now add the new line to the buffer
+        self.buffer.append(csv_line)
+
+    def pop_csv_line(self):
+        if len(self.buffer) == 0:
+            print("Warning: No CSV lines in buffer.", flush=True)
+            return
+        csv_line = self.buffer.pop()
+        print(f"[DELETED] {csv_line}", flush=True)
 
     def jump_forward(self):
-        new_position = self.video_player.position() + self.jump_interval
+        new_position = self.video_player.position() + self.config.jump_interval
         self.video_player.setPosition(new_position)
 
     def jump_backward(self):
-        new_position = self.video_player.position() - self.jump_interval
+        new_position = self.video_player.position() - self.config.jump_interval
         self.video_player.setPosition(max(0, new_position))
         
     def update_playback_speed(self, speed_idx):
         self.current_playback_speed_idx = speed_idx
         self.video_player.setPlaybackRate(
-            self.playback_speeds[self.current_playback_speed_idx])
+            self.config.playback_speeds[self.current_playback_speed_idx])
         
     def slow_down(self):
         new_speed_idx = max(0, self.current_playback_speed_idx - 1)
         self.update_playback_speed(new_speed_idx)
-        self.speed_label.setText(to_playback_speed_str(new_speed_idx))
+        self.speed_label.setText(self.to_playback_speed_str(new_speed_idx))
         
     def speed_up(self):
-        new_speed_idx = min(len(self.playback_speeds) - 1, 
+        new_speed_idx = min(len(self.config.playback_speeds) - 1, 
                                       self.current_playback_speed_idx + 1)
         self.update_playback_speed(new_speed_idx)
-        self.speed_label.setText(to_playback_speed_str(new_speed_idx))
+        self.speed_label.setText(self.to_playback_speed_str(new_speed_idx))
     
     def reset_playback_speed(self):
-        self.update_playback_speed(self.default_speed_idx)
+        self.update_playback_speed(self.config.default_speed_idx)
         
     def update_position_slider(self, position):
         self.position_slider.setValue(position)
@@ -292,30 +233,3 @@ class VideoPlayer(QWidget):
         layout.addWidget(
             button_container, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.setLayout(layout)
-        
-    
-        
-        
-        
-
-def main(): 
-    # read video from sys.argv
-    if len(sys.argv) != 2:
-        print("Usage: python main.py <video_path>", file=sys.stderr)
-        return 1
-    
-    video_path = sys.argv[1]
-    print(f"Loading video from {video_path}...", file=sys.stderr)
-    
-    try:
-        app = QApplication(sys.argv)
-        player = VideoPlayer(video_path)
-        player.show()
-        return app.exec()
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    
-
-if __name__ == "__main__":
-    sys.exit(main())

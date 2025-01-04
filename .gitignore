@@ -6,3 +6,11 @@ csv/*
 
 # for macOS: ignore .DS_Store
 .DS_Store
+
+# ignore pycache
+__pycache__/
+
+# ignore build artifacts
+build/
+dist/
+*.egg-info/

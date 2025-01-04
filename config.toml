@@ -4,3 +4,9 @@ jump_interval = 10000
 # available playback speeds
 playback_speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 default_speed_idx = 3
+
+# buffer size for CSV lines
+# the program will buffer the last `buffer_size` CSV lines
+# in case the user decides to delete a tag
+# if the buffer is empty, the program will print a warning message
+buffer_size = 1000

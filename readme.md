@@ -17,7 +17,7 @@ you can install the dependencies by running the following commands:
 ```bash
 conda create -n video-tagger python=3.12
 conda activate video-tagger
-pip install -r requirements.txt
+pip install .
 ```
 
 ## 🎥 Usage
@@ -26,25 +26,41 @@ On UNIX-like systems (incl. WSL),
 you can run the tool by running the following command:
 
 ```bash
-python3 video-tagger/main.py <video_path> > <output_path>
+video-tagger <video_path> -o <output_path>
 ```
+
+This reads the video from `video_path` and writes the tags to `output_path`.
+
+If the output file already exists, the tool will ask for confirmation to
+overwrite. If you want to append to the output file, use the `-a` option.
 
 We have provided a test video `fireworks-kanemori.mp4` in the `media` directory.
 You can run the tool by running the following command:
 
 ```bash
-python3 video-tagger/main.py media/fireworks-kanemori.mp4 > tags.csv
+# in the project root directory
+video-tagger media/fireworks-kanemori.mp4 -o csv/tags.csv
 ```
 
-Please check [media/media-sources.md](media/media-sources.md) for more details about the media sources.
+Please check [media/media-sources.md](media/media-sources.md)
+for more details about the media sources.
 
 Playback Controls:
 
 - Play or pause the video with the space bar.
 - Jump forward or backward by 10 seconds with the right and left arrow keys.
-- Slow down the video with the `,` or `<` key.
-- Speed up the video with the `.` or `>` key.
-- These controls can be customized in the `config.toml` file.
+- Slow down the video with the `,` or `<` key,
+  and speed up the video with the `.` or `>` key.
+  The available playback speeds are
+  `[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]`,
+  with the default speed being `1.0`.
+- Delete the last tag with the `Backspace` key. By default, the program buffers
+  the last 1000 tags, which means that the user can delete up to 1000 latest
+  tags. If the buffer is exhausted because the user deleted all tags, the
+  program will print a warning message.
+
+These controls can be customized in the `config.toml` file. Alternatively, use
+the `-c` option to specify a custom config file.
 
 Tagging:
 

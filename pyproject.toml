@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video_tagger"
+version = "0.1.0"
+dependencies = ["PyQt6==6.8.0", "PyQt6_sip==13.9.1", "toml==0.10.2"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["video_tagger*"]
+
+[tool.setuptools.package-data]
+video_tagger = ["media/**/*"]
+
+
+[project.scripts]
+video-tagger = "video_tagger.main:main"
