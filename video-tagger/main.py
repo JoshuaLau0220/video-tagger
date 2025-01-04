@@ -216,7 +216,7 @@ class VideoPlayer(QWidget):
             # round to the nearest second when processing the output csvs.
             video_position = self.video_player.position()
             timestamp = to_timestamp_ms(video_position)
-            print(f"{event.text()},{timestamp}")
+            print(f"{event.text()},{timestamp}", flush=True)
 
     def jump_forward(self):
         new_position = self.video_player.position() + self.jump_interval
