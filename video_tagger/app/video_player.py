@@ -160,11 +160,13 @@ class VideoPlayer(QWidget):
         print(f"[DELETED] {csv_line}", flush=True)
 
     def jump_forward(self):
-        new_position = self.video_player.position() + self.config.jump_interval
+        new_position = self.video_player.position() + \
+            self.config.jump_forward_interval
         self.video_player.setPosition(new_position)
 
     def jump_backward(self):
-        new_position = self.video_player.position() - self.config.jump_interval
+        new_position = self.video_player.position() - \
+            self.config.jump_backward_interval
         self.video_player.setPosition(max(0, new_position))
         
     def update_playback_speed(self, speed_idx):

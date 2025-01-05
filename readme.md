@@ -42,10 +42,10 @@ You can run the tool by running the following command:
 video-tagger media/fireworks-kanemori.mp4 -o csv/tags.csv
 ```
 
-Please check [media/media-sources.md](media/media-sources.md)
-for more details about the media sources.
+Check [media/media-sources.md](media/media-sources.md)
+for the source and license of the video.
 
-Playback Controls:
+### Playback Controls
 
 - Play or pause the video with the space bar.
 - Jump forward or backward by 10 seconds with the right and left arrow keys.
@@ -54,20 +54,31 @@ Playback Controls:
   The available playback speeds are
   `[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]`,
   with the default speed being `1.0`.
-- Delete the last tag with the `Backspace` key. By default, the program buffers
-  the last 1000 tags, which means that the user can delete up to 1000 latest
-  tags. If the buffer is exhausted because the user deleted all tags, the
-  program will print a warning message.
 
-These controls can be customized in the `config.toml` file. Alternatively, use
-the `-c` option to specify a custom config file.
+### Config
 
-Tagging:
+Playback controls can be customized in the `config.toml` file. When the program
+is run, it looks for `config.toml` in the current directory, then in the
+`~/.config/video-tagger/` directory. If no config file is found, it uses the
+default config. Alternatively, you can specify a custom config file by using
+the `-c` option.
+
+We have provided an example of the config file in `config.default.toml` in the
+project root directory, which also shows the default values.
+To customize the playback controls, you can copy this file to `config.toml` and
+modify the values. If you only want to change some of the values,
+you can omit the other values so that the default values will be used.
+
+### Tagging
 
 - Add a tag by typing a letter or digit ([A-Za-z0-9]).
   Non-alphanumeric characters will be ignored.
 - The time will be printed to the console in the format `<char>,<HH:MM:SS.MS>`.
 - Pipe the output to a csv file to save the tags.
+- Delete the last tag with the `Backspace` key. By default, the program buffers
+  the last 1000 tags, which means that the user can delete up to 1000 latest
+  tags. If the buffer is exhausted because the user deleted all tags, the
+  program will print a warning message.
 
 ## 🔧 Troubleshooting
 
