@@ -72,11 +72,11 @@ def main():
     mode = "w" if not args.append else "a"
     
     if args.output is not None: 
-        if not os.path.exists(args.output):
-            print(f"Error: Output file {args.output} does not exist", 
-                  file=sys.stderr)
+        try:
+            file_stream = open(args.output, mode)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
-        file_stream = open(args.output, mode)
     else:
         file_stream = None
         
